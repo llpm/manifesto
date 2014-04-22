@@ -1,0 +1,35 @@
+% !TEX root = llpm_manifesto.tex
+
+\begin{abstract}
+
+Despite a variety of promising work in hardware design methodologies, the
+existing ecosystem of hardware design tools is broken. Today's
+state-of-the-practice design toolsets are comprised of poorly-written
+proprietary software cobbled together via brittle scripts written by
+end-users. Further, RTL languages like Verilog are utilized as de facto
+intermediate representations, though significant quantities of important
+semantic information cannot be encoded in such low level representation. As a
+direct result, both hardware design tasks themselves and innovating on new
+hardware design methods tends to be extremely difficult.
+
+To remedy many of the problems in hardware design, we propose the LLPM (Low
+Level Physical Machine) framework. LLPM is intended to provide for hardware
+what LLVM~\cite{llvm} has for software. Specifically, LLPM serves as
+middleware for hardware compiler flows. It defines an intermediate
+representation (IR) for hardware which can be produced by language or design
+front ends, transformed by optimization passes, and synthesized into ASICs,
+FPGA bitcode, RTL, or software simulators. LLPM's open framework and IR makes
+it easier for new design/test/verification techniques, languages, and tools to
+be implemented within a production framework. Should an ecosystem evolve
+around it, LLPM will enable easier hardware design and debugging.
+
+In this manifesto, we introduce LLPM, both its IR and software framework. We
+define the LLPM IR, which is a strongly-typed, latency-insensitive,
+multi-granular dataflow graph. To both motivate the IR and set a roadmap for
+LLPM's development, we also discuss a number of potential optimizations which
+can be implemented in LLPM as well as potential front and back ends. Finally,
+LLPM is intended to be flexible and extensible, enabling the integration of
+design automation and optimization. As such, also we outline a proposal for
+the design of LLPM as a software framework and tool flow.
+
+\end{abstract}
