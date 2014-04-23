@@ -3,3 +3,154 @@
 \chapter{Introduction}
 \label{sec:intro}
 
+
+\section{What's wrong with RTL?}
+LLPM proposes to use an intermediate representation which is significantly
+different from RTL in a variety of respects, the most important of which is
+that it is latency-insensitive with no notion of a clock. Simply put, instead
+of modeling wires which implement signaling protocols, the LLPM IR models
+messages which are later synthesized into wires with specific signaling
+protocols. This has many implications and significantly alters the operation
+of the toolchain, as discuss later in Chapter~\ref{sec:ir}. One main result is
+that LLPM eschews reasoning about single wire signals and designing around
+clocks, the two critical and interrelated aspects of RTL which we feel are too
+low level, thus constraining to the tools and inexpressive for the user.
+
+\subsection{Wires Considered Harmful}
+Modern hardware designs are large and complex -- large enough that signals
+cannot permeate an entire chip in sub-cycle time, and complex enough that an
+individual designer cannot understand the timing requirements of all its
+design modules. To deal with both size and complexity, designers use
+latency-insensitive design (LID)~\cite{Carloni2001}.\footnote{Latency
+insensitive design is also known as Elastic~\cite{Cortadella2010} or
+Quasi-Delay Insensitive design~\cite{Hauck1995,Martin1990}.} Modules which
+communicate via LID are tolerant to delays in their communication, allowing
+their communication channels to be pipelined (a necessity for high clock
+rates) or messages transmitted over shared networks (which can save area).
+
+At some point in the design process, each LID communication channel must be
+compiled into an RTL specification, which requires that all registers must be
+specified. This presents a problem for the designer: how many pipeline stages
+are required in the channel? If the modules are physically placed far apart,
+many stages could be necessary, especially if the area for routing the wires
+is constrained. If the modules are placed next to each other, however, no
+pipeline stages may be necessary and over-specifying them would waste area and
+performance. Further, any decisions made statically by the designer decrease
+the portability and increase the brittleness of the design since changing the
+target platform (a different FPGA or ASIC technology node) or even minor
+perturbations in the placement algorithm could affect the latency through a
+communication channel.
+
+We can also extend LID beyond pure communication to delay through computation.
+Put simply, many computations are delay insensitive and can thus be
+arbitrarily pipelined to increase throughput or clock speed. Similar to the
+communication channel case, the extent of pipelining and placement of pipeline
+registers will depend on the target platform. Currently, designers must
+statically pipeline computations based on the characteristics of their target
+and intuition about the operation of the place-and-route algorithm's behavior.
+
+The existing solution to automated pipelining involves using tools which do
+automatically pipeline parts of a design -- which are typically specified
+separately and differently from the remainder of the design -- and produce RTL
+which can be consumed by the back end of the pipeline. In order to do the
+pipelining, these tools require estimates of latency. For communications, they
+must know how long a communication channel should be. For computation, they
+must estimated the latency through each combinatorial block. As a result,
+these tools are likely to be be brittle and inflexible, supporting only
+certain technologies (\eg a particular ASIC process and standard cell library)
+or requiring a good deal of tuning to obtain optimal results. Their estimates
+can also be wrong, producing timing violations which must be closed by the
+designer. Lastly, they are still subject to the vagaries of placement
+algorithms' -- any minor change could cause it to place modules or blocks
+differently, destroying assumptions about communication latencies.
+
+Ideally, decisions about pipelining both communication and computation should
+be done automatically by the tool chain. Further, it should probably be
+deferred past the synthesis step into routing. Were a routing aware of
+latency-insensitive channels, it could simply place pipeline stages as
+necessary when routing the channel. For computation, pipeline stages can be
+placed once reliable estimates of combinational latency are known. It also
+seems likely that deferring pipelining to the place-and-route would reduce
+their computational complexity when suboptimal designs suffice -- rather than
+struggling to meet maximum critical path timing set by a clock, they can
+simply break the critical paths with pipeline stages when necessary, allowing
+them to high higher clock rates without designer intervention.
+
+\subsection{Clocks Considered Harmful}
+Although not inherent to RTL as an intermediate language, the use of
+cycle-based languages encourages the implicit use of cycles as events. We
+argue that this methodology can lead to brittle and/or buggy systems.
+
+One of the most common mis-uses of cycles as system events is their use in
+timing for interface signals. For instance, it is fairly common for an
+interface to specify something like ``data will be available 3 clock cycles
+after request is asserted'' instead of providing a valid signal. The first,
+relatively superficial, problem with this sort of specification is that is
+places extra burden on the designer using the interface. Second, and more
+important, what happens if the 3 cycle delay should change? Since it exists
+only as a textual specification, the compiler tools cannot fix the problem and
+the system will break -- silently.
+
+Clocks are also sometimes used for implicit synchronization. For example, one
+might share a long, expensive wire with $N$ components using time division
+multiplexing. Since each component is designed knowing about the multiplexing
+scheme, it only outputs valid data once every $N$ cycles. What happens when an
+additional component is added to the multiplexer? If the design neglects to
+update the original components for the new scheme, they will again break
+silently. We have also seen cases of parallel state machines one of which
+makes assumptions about the other's state based on a cycle counts. This works
+reasonably well until an additional state is added and the system breaks,
+again, silently. These problems are simple mistakes as a result of bad design,
+however the exposure of the clock as a primitive makes implicit, informal
+timing assumptions easy -- typically easier to implement than explicit, formal
+timing interfaces.
+
+All of the cases listed here are -- to be fair to RTL -- examples of poor
+design. In many cases, however, these and similar patterns are justified
+optimizations. Interface timing requirements, for example, can reduce the
+number of signals, logic, and possibly latency in the module. As a result,
+these patterns are common. They are, however, as dangerous as they are common.
+Optimizations which make for brittle code are optimizations best left to
+compiler tools. It took the software engineering world decades to learn that
+lesson. Ideally, compiler tools could reason about and optimize communication
+interfaces and events. Tools operating on RTL, however, are extremely
+constrained in the optimizations they can apply without breaking the design.
+
+\subsection{Other RTL Drawbacks}
+Every hardware design has their pet peeves regarding idiosyncrasies in Verilog
+or VHDL, many of which would be solved by better languages. The two issues
+discussed above, however, fundamental to the use of RTL as a model --
+regardless of an RTL language's facade, these issues will remain. Some of the
+less fundamental issues of Verilog/VHDL and RTL in general are worth
+mentioning, as they motivate desiderata for the LLPM IR:
+
+\begin{description}
+    \item[Lack of Interface Standards] Since RTL only specifies wires,
+    component designers are free to define their own interface protocols. Some
+    designers standardize on FIFO semantics or handshaking protocols. Some
+    components use entirely custom interface standards to reduce the
+    component's footprint. The variety of different semantics and the ease
+    with which designs can commit off-by-one-cycle errors makes integrating
+    components far more difficult than necessary, hindering composability.
+
+    \item[Weak Typing] Verilog/VHDL have very weak type systems upon which
+    SystemVerilog improves, though many synthesis tools do not fully support
+    its type system. As a result, many designers do not use types at all, and
+    synthesis tools often even ignore (or bury in warnings) bit width matching
+    errors.
+
+    \item[Lack of Optimization Opportunities] RTL optimization tools are
+    constrained in the type of range of optimizations which they can perform
+    without breaking a system. In many cases it can only optimize the
+    combinatorial logic in between registers. If it modifies the number of
+    registers or the placement of the registers, then any circuit viewing
+    internal signals or outputs could see the wrong data or the right data on
+    the wrong clock cycle. In the select case where a set of signals belonging
+    to combinatorial logic and registers remain contained within a block, the
+    tool can perform register retiming~\cite{leiserson1983optimizing} and
+    shift the placement of the registers, however it still cannot change the
+    number of registers.
+
+\end{description}
+
+
